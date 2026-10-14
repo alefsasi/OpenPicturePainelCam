@@ -1,5 +1,7 @@
 @echo off
-rem Inicia o painel de cameras. Opcional: set PORT=7391 / set HOST=0.0.0.0 antes de executar.
+setlocal
+rem Painel de cameras. Sem argumentos roda nesta janela (Ctrl+C para parar).
+rem Comandos (use painel.bat no terminal): start, stop, status, open, autostart on/off, menu
 rem Usa o Node embutido em runtime\node.exe (pacote de release) ou o Node instalado no PATH.
 rem Para o modo tempo real, coloque o ffmpeg.exe em runtime\ (ou defina FFMPEG_PATH).
 cd /d "%~dp0"
@@ -14,8 +16,7 @@ goto run
 set "NODE_EXE=runtime\node.exe"
 
 :run
-if exist "runtime\ffmpeg.exe" if not defined FFMPEG_PATH set "FFMPEG_PATH=%~dp0runtime\ffmpeg.exe"
-"%NODE_EXE%" src\index.js
+"%NODE_EXE%" src\cli.js %*
 if errorlevel 1 pause
 exit /b
 

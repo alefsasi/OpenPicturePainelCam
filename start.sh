@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
-# Inicia o painel de câmeras. Opcional: PORT=7391 HOST=0.0.0.0 ./start.sh
+# Painel de câmeras. Sem argumentos roda neste terminal (Ctrl+C para parar).
+# Comandos: start (segundo plano), stop, status, open, autostart on/off, menu. Veja: ./start.sh help
 # Usa o Node embutido em runtime/node (pacote de release) ou o Node instalado no PATH.
 # Para o modo tempo real, coloque o ffmpeg em runtime/ (ou defina FFMPEG_PATH).
 cd "$(dirname "$0")" || exit 1
@@ -15,10 +16,5 @@ else
   exit 1
 fi
 
-if [ -z "$FFMPEG_PATH" ] && [ -f runtime/ffmpeg ]; then
-  chmod +x runtime/ffmpeg 2>/dev/null
-  FFMPEG_PATH="$(pwd)/runtime/ffmpeg"
-  export FFMPEG_PATH
-fi
-
-exec "$NODE" src/index.js
+# `exec` é seguro aqui: a CLI cria o processo em segundo plano por conta própria.
+exec "$NODE" src/cli.js "$@"

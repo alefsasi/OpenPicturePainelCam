@@ -10,6 +10,7 @@ import { CameraError, createCameraClient } from './camera-client.js';
 import { ValidationError, createConfigStore } from './config-store.js';
 import { buildRtspUrl, createStreamHub } from './stream-hub.js';
 import { attachWebSocket } from './websocket.js';
+import { APP_ID } from './runtime.js';
 
 const PUBLIC_DIR = resolve(fileURLToPath(new URL('../public', import.meta.url)));
 const MAX_BODY = 64 * 1024;
@@ -65,7 +66,9 @@ async function serveStatic(pathname, res) {
   }
 }
 
-export function createServer({ configPath, timeoutMs, ffmpegPath, spawn, streamOptions } = {}) {
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+export function createServer({ configPath, timeoutMs, ffmpegPath, spawn, streamOptions, onShutdown, appId = APP_ID } = {}) {
   const store = createConfigStore(configPath);
   const cameras = createCameraClient({ timeoutMs });
   const hub = createStreamHub({ ffmpegPath, spawn, ...streamOptions });
@@ -150,6 +153,19 @@ export function createServer({ configPath, timeoutMs, ffmpegPath, spawn, streamO
   async function api(req, res, parts) {
     const [, resource, id, action] = parts; // ['api', recurso, id, ação]
     const { method } = req;
+
+    // Usados pela CLI (`status`/`stop`) para confirmar que o PID registrado é mesmo o painel.
+    if (resource === 'ping' && method === 'GET') return sendJson(res, 200, { app: appId, pid: process.pid });
+
+    if (resource === 'shutdown' && method === 'POST' && onShutdown) {
+      // Só o próprio computador pode mandar parar (mesmo com HOST=0.0.0.0) e é preciso
+      // citar o PID certo; o corpo JSON também barra formulários de outros sites (CSRF).
+      if (!LOOPBACK.has(req.socket.remoteAddress)) throw new ValidationError('Apenas o próprio computador pode parar o painel', 403);
+      if ((await readJson(req)).pid !== process.pid) throw new ValidationError('PID não confere');
+      sendJson(res, 200, { ok: true });
+      res.on('finish', () => setImmediate(onShutdown));
+      return;
+    }
 
     if (resource === 'config' && method === 'GET') {
       await hub.ready; // a primeira resposta já sabe se há FFmpeg

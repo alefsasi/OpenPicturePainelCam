@@ -28,6 +28,110 @@ cd open-picture-painel-cam-*-linux-x64
 - **Tempo real:** coloque o `ffmpeg` (`ffmpeg.exe` no Windows) dentro da pasta `runtime/`. O `start` o encontra sozinho. O FFmpeg não vai embutido por causa da licença; veja [Tempo real](#tempo-real-opcional).
 - **Conferir o download:** compare com o `SHA256SUMS.txt` da release (`sha256sum -c SHA256SUMS.txt`, ou `Get-FileHash` no PowerShell).
 
+### Usar como comando de qualquer pasta (PATH do sistema)
+
+Para iniciar o painel com um único comando, `painel-cam`, em qualquer terminal, crie um atalho numa pasta que esteja no `PATH`. O atalho só chama o `start`, então suas câmeras continuam em `data/`, dentro da pasta do programa, não importa de onde você o chame.
+
+**Windows (PowerShell, sem precisar de administrador).** Ajuste `$app` para a pasta onde extraiu o `.zip`:
+
+```powershell
+$app = "C:\Apps\open-picture-painel-cam-v1.0.0-win-x64"
+$bin = "$env:USERPROFILE\bin"
+
+# cria o atalho painel-cam.cmd
+New-Item -ItemType Directory -Force $bin | Out-Null
+Set-Content "$bin\painel-cam.cmd" "@echo off`r`ncall `"$app\start.bat`" %*" -Encoding ascii
+
+# adiciona a pasta ao PATH do seu usuário (só se ainda não estiver lá)
+$path = [Environment]::GetEnvironmentVariable("Path", "User")
+if (($path -split ';') -notcontains $bin) {
+  [Environment]::SetEnvironmentVariable("Path", "$path;$bin", "User")
+}
+```
+
+Feche e abra o terminal e rode `painel-cam`. Para desfazer, apague `%USERPROFILE%\bin\painel-cam.cmd` (e, se quiser, a entrada `bin` em *Editar as variáveis de ambiente para sua conta*).
+
+**Linux** (mova a pasta para um lugar fixo e crie o atalho em `/usr/local/bin`):
+
+```bash
+sudo mv open-picture-painel-cam-*-linux-x64 /opt/open-picture-painel-cam
+
+sudo tee /usr/local/bin/painel-cam >/dev/null <<'EOF'
+#!/bin/sh
+exec /opt/open-picture-painel-cam/start.sh "$@"
+EOF
+sudo chmod +x /usr/local/bin/painel-cam
+```
+
+Depois, `painel-cam` em qualquer terminal. Use esse atalho em vez de um link simbólico (`ln -s`): o `start.sh` descobre a própria pasta pelo caminho em que foi chamado e um link o faria procurar os arquivos no lugar errado. Sem `sudo`, crie o atalho em `~/.local/bin` e adicione-o ao PATH: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile`.
+
+Com o atalho, todos os comandos da próxima seção ficam disponíveis como `painel-cam start`, `painel-cam stop`, `painel-cam status`...
+
+**Porta e outras opções fixas:** em vez de variáveis de ambiente, use o arquivo `data/painel.env` (veja [Opções do servidor](#opções-do-servidor-datapainelenv)).
+
+### Rodar em segundo plano, parar e iniciar com o sistema
+
+Sem comando, o `start` roda preso à janela do terminal (fechou, parou). Com os comandos abaixo o painel roda **sem janela e sem prender o terminal**:
+
+| Comando | O que faz |
+| ------- | --------- |
+| `start` | Roda em segundo plano |
+| `stop` | Para o painel (`stop --force` encerra à força um processo que não responde) |
+| `status` | Mostra se está rodando (endereço, PID) e se o início automático está ligado |
+| `open` | Abre o painel no navegador |
+| `logs` | Mostra o final do log |
+| `menu` | Menu interativo |
+| `autostart on` / `off` / `status` | Liga, desliga ou mostra o início automático |
+
+Use-os com o script do seu sistema: `.\painel.bat start` / `.\painel.bat stop` no Windows, `./start.sh start` / `./start.sh stop` no Linux (ou `painel-cam start`, se criou o atalho acima). **No Windows, dê duplo clique em `painel.bat`** para ter um menu com essas opções, sem digitar nada.
+
+> No terminal do Windows use `painel.bat`, não `start.bat`: `start` é um comando interno do `cmd`, e digitar `start.bat` sem caminho não funciona (`.\start.bat` ou o duplo clique funcionam normalmente).
+
+- **Sem janela:** no Windows o painel não aparece na barra de tarefas, só como `node.exe` no Gerenciador de Tarefas.
+- **Parar:** `stop` pede o encerramento ao próprio painel (que só aceita esse pedido vindo do mesmo computador e com o PID certo) e fecha tudo, inclusive os FFmpeg. Se ele não responder em cerca de 5 s, encerra à força. Se o PID registrado não responder como o painel (travado ou reaproveitado por outro programa), `stop` **recusa** matar sem o `--force`, para não encerrar um programa errado. Como último recurso, finalize o `node.exe` no Gerenciador de Tarefas.
+- **Arquivos:** `data/painel.pid` (PID em execução) e `data/painel.log` (mensagens e erros; passa para `painel.log.1` ao chegar a 1 MB). Se o painel não iniciar, o `start` mostra o final do log.
+
+**Início automático (opcional, nunca obrigatório).** `autostart on` liga e `autostart off` desliga, sem precisar de administrador:
+
+- **Windows:** cria uma entrada de inicialização do seu usuário (aparece em *Gerenciador de Tarefas → Inicializar*, onde também dá para desativá-la). O painel sobe em segundo plano quando você entra no Windows; uma janela de console pode piscar por uma fração de segundo. Se mover a pasta do programa, ligue de novo.
+- **Linux:** cria o serviço systemd de usuário `painel-cam` (reinicia sozinho se cair) e tenta ativar o *linger*, que faz o serviço subir **no boot, sem ninguém logado**. Se o *linger* não puder ser ativado, o comando mostra a linha `sudo loginctl enable-linger SEU_USUARIO` para rodar uma vez. Logs: `journalctl --user -u painel-cam`; controle: `systemctl --user start|stop|status painel-cam`. O `stop` da CLI também funciona e, por ser uma saída normal, o systemd não reinicia o painel até o próximo boot.
+
+### Linux mínimo / servidor sem tela
+
+O painel foi pensado para rodar assim. Use o pacote `…-linux-x64.tar.gz` (ou `…-arm64.tar.gz`) e instale **dentro da sua pasta de usuário**, porque o painel grava em `data/` e o serviço é do seu usuário:
+
+```bash
+tar -xzf open-picture-painel-cam-*-linux-x64.tar.gz
+mv open-picture-painel-cam-*-linux-x64 ~/painel-cam
+cd ~/painel-cam
+./start.sh autostart on     # sobe no boot e reinicia se cair
+./start.sh start            # liga já, sem esperar o próximo boot
+./start.sh status
+```
+
+**Acessar de outro computador (por exemplo, do Windows).** Por segurança o painel só escuta em `127.0.0.1`. Há duas formas:
+
+1. **Túnel SSH (mais seguro).** No outro computador: `ssh -L 7391:127.0.0.1:7391 usuario@servidor` e abra http://127.0.0.1:7391. Nada é exposto na rede.
+2. **Escutar na rede.** Crie `data/painel.env` com `HOST=0.0.0.0`, reinicie e acesse `http://IP-DO-SERVIDOR:7391` (libere a porta no firewall, se houver). O painel **não tem login**: quem alcançar a porta vê as câmeras e altera a configuração. Use só em rede confiável.
+
+Observações para sistemas mínimos:
+
+- O Node embutido nos pacotes `linux-*` exige **glibc**. Em **Alpine** (musl) use o pacote `…-sem-node.zip` com o Node do próprio sistema (`apk add nodejs`). O Alpine usa OpenRC em vez de systemd, então `autostart` não se aplica: use `start`/`stop` e o init do sistema.
+- Para o modo tempo real não é preciso instalar o FFmpeg pelo gerenciador de pacotes (que costuma trazer muitas dependências): coloque um binário `ffmpeg` estático em `runtime/` e dê permissão de execução.
+
+### Opções do servidor (`data/painel.env`)
+
+Para deixar a porta, o endereço ou o FFmpeg fixos, sem mexer nas variáveis de ambiente do sistema, crie `data/painel.env` (ele não vai para o git):
+
+```ini
+# data/painel.env
+PORT=8080
+HOST=0.0.0.0
+FFMPEG_PATH=/caminho/para/ffmpeg
+```
+
+Funciona igual em modo normal, em segundo plano, no início automático do Windows e no serviço systemd. Variáveis de ambiente de verdade têm prioridade sobre o arquivo. `CONFIG_PATH` não vale aí, porque ele define onde esse arquivo fica.
+
 ### Gerar os pacotes
 
 ```bash
@@ -46,7 +150,7 @@ Para publicar uma release manualmente: rode `npm test`, gere os pacotes com `npm
 npm start            # http://127.0.0.1:7391
 ```
 
-Ou use os scripts de inicialização: `start.bat` (Windows, também por duplo clique) e `./start.sh` (Linux/macOS; se faltar permissão, `chmod +x start.sh`).
+Ou use os scripts de inicialização: `start.bat` (Windows, também por duplo clique) e `./start.sh` (Linux/macOS; se faltar permissão, `chmod +x start.sh`). Ambos aceitam comandos (`start`, `stop`, `status`…) para rodar em segundo plano.
 
 Requer Node 20.3 ou superior. Variáveis opcionais:
 
@@ -55,7 +159,9 @@ Requer Node 20.3 ou superior. Variáveis opcionais:
 | `PORT`        | `7391`              | Porta HTTP (incomum, evita conflitos)       |
 | `HOST`        | `127.0.0.1`         | Interface; use `0.0.0.0` para acessar da rede |
 | `CONFIG_PATH` | `data/config.json`  | Arquivo de configuração                     |
-| `FFMPEG_PATH` | `ffmpeg`            | Binário do FFmpeg (só o modo tempo real usa) |
+| `FFMPEG_PATH` | `runtime/ffmpeg` se existir, senão `ffmpeg` do PATH | Binário do FFmpeg (só o modo tempo real usa) |
+
+`PORT`, `HOST` e `FFMPEG_PATH` também podem ficar em `data/painel.env` (veja [Opções do servidor](#opções-do-servidor-datapainelenv)). Para rodar sem janela e iniciar com o sistema, veja [Rodar em segundo plano](#rodar-em-segundo-plano-parar-e-iniciar-com-o-sistema).
 
 > A API de configuração **não tem login**. Ao usar `HOST=0.0.0.0`, exponha o painel apenas em rede confiável.
 
