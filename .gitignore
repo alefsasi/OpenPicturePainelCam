@@ -147,3 +147,7 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Local camera config (contains IPs and credentials, never commit)
+data/
+config.local.json

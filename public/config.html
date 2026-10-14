@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configurações · Painel de Câmeras</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="settings">
+  <header>
+    <h1>Configurações</h1>
+    <a class="btn" href="/">← Voltar às câmeras</a>
+  </header>
+  <p id="status" role="status"></p>
+
+  <form id="general" class="card" autocomplete="off">
+    <h2>Geral</h2>
+    <div class="fields">
+      <label>Delay entre atualizações (ms)
+        <input name="refreshDelayMs" type="number" min="100" max="600000" step="100" required>
+      </label>
+      <label>Usuário global
+        <input name="username" autocomplete="off">
+      </label>
+      <label>Senha global
+        <input name="password" type="password" autocomplete="new-password">
+      </label>
+    </div>
+    <p class="note">O usuário e a senha globais valem para todas as câmeras que não tiverem credenciais próprias. Deixe a senha em branco para mantê-la; apagar o usuário remove as duas.</p>
+    <div class="row"><button class="btn primary" type="submit">Salvar</button></div>
+  </form>
+
+  <section class="card">
+    <h2>Câmeras</h2>
+    <table class="table">
+      <thead><tr><th>Nome</th><th>IP</th><th>Credenciais</th><th>Delay</th><th></th></tr></thead>
+      <tbody id="cameras"></tbody>
+    </table>
+    <p id="no-cameras" class="note" hidden>Nenhuma câmera cadastrada ainda.</p>
+  </section>
+
+  <form id="camera-form" class="card" autocomplete="off">
+    <h2 id="camera-form-title">Nova câmera</h2>
+    <div class="fields">
+      <label>Nome
+        <input name="name" placeholder="Entrada" required>
+      </label>
+      <label>IP (ou IP:porta)
+        <input name="ip" placeholder="192.168.0.10" required>
+      </label>
+      <label>Usuário (opcional)
+        <input name="username" autocomplete="off">
+      </label>
+      <label>Senha (opcional)
+        <input name="password" type="password" autocomplete="new-password">
+      </label>
+      <label>Delay próprio (ms, opcional)
+        <input name="refreshDelayMs" type="number" min="100" max="600000" step="100" placeholder="usa o global">
+      </label>
+    </div>
+    <p class="note">Sem usuário próprio a câmera usa as credenciais globais; sem delay próprio, usa o delay global. Ao editar, deixe a senha em branco para mantê-la.</p>
+    <div class="row">
+      <button class="btn primary" type="submit" id="camera-submit">Cadastrar</button>
+      <button class="btn" type="button" id="camera-cancel" hidden>Cancelar edição</button>
+    </div>
+  </form>
+
+  <script type="module" src="/config.js"></script>
+</body>
+</html>
