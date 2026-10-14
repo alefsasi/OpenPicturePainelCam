@@ -1,4 +1,5 @@
 import { GRIDS, buildQuery, computeView, focusSpan, parseQuery } from './layout.js';
+import { startRealtime } from './realtime.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...children) => {
@@ -70,7 +71,7 @@ function stopAll() {
 
 function render() {
   stopAll();
-  const view = computeView(parseQuery(location.search), config.cameras);
+  const view = computeView(parseQuery(location.search, config.defaultView, config.cameras), config.cameras);
   renderGrid(view);
   renderLayouts(view);
   renderPager(view);
@@ -78,13 +79,28 @@ function render() {
   if (!document.hidden) startTiles();
 }
 
+/**
+ * Modo efetivo da câmera: o dela sobrescreve o global. Tempo real exige FFmpeg
+ * no servidor; sem ele a câmera cai em snapshot (que continua sendo o padrão).
+ */
+function modeOf(camera) {
+  const wanted = camera.streamMode ?? config.streamMode;
+  return wanted === 'realtime' && config.realtime.available ? 'realtime' : 'snapshot';
+}
+
 function startTiles() {
   stopAll();
+  const live = new Map();
   document.querySelectorAll('.tile').forEach((tile) => {
     const camera = config.cameras.find((c) => c.id === tile.dataset.id);
+    if (tile.dataset.mode === 'realtime') {
+      live.set(camera.id, tile);
+      return;
+    }
     // O delay da câmera sobrescreve o global.
     stopTiles.push(startTile(tile, camera, camera.refreshDelayMs ?? config.refreshDelayMs));
   });
+  if (live.size) stopTiles.push(startRealtime(live));
 }
 
 function renderGrid(view) {
@@ -101,12 +117,14 @@ function renderGrid(view) {
 
   view.items.forEach((camera) => {
     const isFocus = camera === view.focus;
+    const mode = modeOf(camera);
     const tile = el('figure', { className: `tile${isFocus ? ' focus' : ''}` },
       el('img', { alt: camera.name, draggable: false }),
       el('div', { className: 'msg' }),
       el('figcaption', {},
         el('span', { className: 'dot' }),
         el('span', { className: 'name' }, camera.name),
+        mode === 'realtime' ? el('span', { className: 'badge', title: 'Vídeo em tempo real' }, 'AO VIVO') : '',
         el('a', {
           className: 'focus-btn',
           href: focusHref(view, camera, isFocus),
@@ -114,6 +132,7 @@ function renderGrid(view) {
           ariaLabel: isFocus ? 'Sair do foco' : `Destacar ${camera.name}`,
         }, isFocus ? '⤡' : '⤢')));
     tile.dataset.id = camera.id;
+    tile.dataset.mode = mode;
     if (isFocus) {
       tile.style.gridColumn = `span ${view.span}`;
       tile.style.gridRow = `span ${view.span}`;

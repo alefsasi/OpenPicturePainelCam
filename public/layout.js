@@ -9,13 +9,18 @@ export function focusSpan(grid) {
   return grid === 3 ? 2 : grid === 4 ? 3 : 0;
 }
 
-export function parseQuery(search) {
+/**
+ * Lê a querystring. Sem `grid` válido na URL, vale a visualização padrão salva
+ * nas configurações (`fallback`); se ela for com foco, a câmera em foco é a primeira da lista.
+ */
+export function parseQuery(search, fallback = { grid: DEFAULT_GRID, focus: false }, cameras = []) {
   const q = new URLSearchParams(search);
   const grid = Number(q.get('grid'));
   const page = Number(q.get('page'));
+  const hasGrid = GRIDS.includes(grid);
   return {
-    grid: GRIDS.includes(grid) ? grid : DEFAULT_GRID,
-    focusId: q.get('focus') || null,
+    grid: hasGrid ? grid : fallback.grid,
+    focusId: q.get('focus') || (!hasGrid && fallback.focus ? cameras[0]?.id ?? null : null),
     page: Number.isInteger(page) && page > 0 ? page : 1,
   };
 }

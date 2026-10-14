@@ -82,6 +82,46 @@ test('senha errada vira 401 e a API pública não vaza senhas', async () => {
   assert.equal(text.includes('errada'), false);
 });
 
+test('senha recusada: a câmera é consultada uma vez e depois fica em pausa (anti-bloqueio)', async () => {
+  const pausedPanel = createServer({ configPath: join(dir, 'paused.json'), timeoutMs: 1000 });
+  const p = await listen(pausedPanel);
+  const url = (path) => `http://127.0.0.1:${p}${path}`;
+  const send = (path, method = 'GET', body) => fetch(url(path), {
+    method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body && JSON.stringify(body),
+  });
+  try {
+    await send('/api/settings', 'PUT', { refreshDelayMs: 1000, auth: { username: USER, password: 'errada' } });
+    const { id } = await (await send('/api/cameras', 'POST', { name: 'Trava', ip: camAddress })).json();
+
+    cameraRequests = 0;
+    const first = await send(`/api/cameras/${id}/snapshot`);
+    assert.equal(first.status, 401);
+    const afterFirst = cameraRequests; // 1 desafio + 1 tentativa com a senha errada
+
+    for (let i = 0; i < 5; i++) {
+      const res = await send(`/api/cameras/${id}/snapshot`);
+      assert.equal(res.status, 401);
+      assert.match((await res.json()).error, /pausadas/);
+    }
+    assert.equal(cameraRequests, afterFirst); // as 5 seguintes nem chegaram na câmera
+
+    // Corrigir a senha no painel libera na hora.
+    await send('/api/settings', 'PUT', { refreshDelayMs: 1000, auth: { username: USER, password: PASS } });
+    assert.equal((await send(`/api/cameras/${id}/snapshot`)).status, 200);
+
+    // "Testar" (force=1) tenta mesmo durante a pausa; sem force, nada chega à câmera.
+    await send('/api/settings', 'PUT', { refreshDelayMs: 1000, auth: { username: USER, password: 'errada-de-novo' } });
+    assert.equal((await send(`/api/cameras/${id}/snapshot`)).status, 401); // entra em pausa
+    cameraRequests = 0;
+    assert.equal((await send(`/api/cameras/${id}/snapshot`)).status, 401);
+    assert.equal(cameraRequests, 0);
+    assert.equal((await send(`/api/cameras/${id}/snapshot?force=1`)).status, 401);
+    assert.ok(cameraRequests > 0); // o teste manual realmente foi até a câmera
+  } finally {
+    pausedPanel.close();
+  }
+});
+
 test('câmera offline vira erro 502 e rotas desconhecidas 404', async () => {
   const { id } = await (await call('/api/cameras', 'POST', { name: 'Off', ip: '127.0.0.1:9' })).json();
   assert.equal((await call(`/api/cameras/${id}/snapshot`)).status, 502);

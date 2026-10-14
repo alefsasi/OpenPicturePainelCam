@@ -41,7 +41,22 @@ function credentialsLabel(cam) {
   return config.auth.username ? 'Global' : 'Nenhuma';
 }
 
+const MODE_NAMES = { snapshot: 'Snapshot', realtime: 'Tempo real' };
+
+function modeLabel(cam) {
+  return cam.streamMode ? MODE_NAMES[cam.streamMode] : `Padrão (${MODE_NAMES[config.streamMode]})`;
+}
+
+// A visualização padrão vira "3" ou "3f" (f = com foco) no <select>.
+const viewToOption = ({ grid, focus }) => `${grid}${focus ? 'f' : ''}`;
+const optionToView = (value) => ({ grid: Number.parseInt(value, 10), focus: value.endsWith('f') });
+
 function renderAll() {
+  general.defaultView.value = viewToOption(config.defaultView);
+  general.streamMode.value = config.streamMode;
+  general.fps.value = config.realtime.fps;
+  general.maxWidth.value = config.realtime.maxWidth;
+  $('realtime-note').hidden = config.realtime.available;
   general.refreshDelayMs.value = config.refreshDelayMs;
   general.username.value = config.auth.username;
   general.password.value = '';
@@ -54,6 +69,7 @@ function renderAll() {
       el('td', {}, cam.name),
       el('td', {}, cam.ip),
       el('td', {}, credentialsLabel(cam)),
+      el('td', {}, modeLabel(cam)),
       el('td', {}, cam.refreshDelayMs ? `${cam.refreshDelayMs} ms` : `Global (${config.refreshDelayMs} ms)`),
       el('td', { className: 'actions' },
         el('button', { className: 'btn', type: 'button', onclick: () => testCamera(cam, result) }, 'Testar'),
@@ -70,7 +86,8 @@ async function testCamera(cam, result) {
   result.className = 'result';
   result.textContent = 'testando…';
   try {
-    const res = await fetch(`/api/cameras/${cam.id}/snapshot?t=${Date.now()}`, { cache: 'no-store' });
+    // force=1: o teste manual tenta mesmo que o painel tenha pausado por senha recusada.
+    const res = await fetch(`/api/cameras/${cam.id}/snapshot?force=1&t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
     const kb = ((await res.blob()).size / 1024).toFixed(0);
     result.className = 'result ok';
@@ -87,6 +104,8 @@ function startEdit(cam) {
   form.ip.value = cam.ip;
   form.username.value = cam.username;
   form.refreshDelayMs.value = cam.refreshDelayMs ?? '';
+  form.streamMode.value = cam.streamMode ?? '';
+  form.rtspPort.value = cam.rtspPort ?? '';
   form.password.value = '';
   form.password.placeholder = cam.hasPassword ? '•••••• (definida)' : '';
   $('camera-form-title').textContent = `Editando: ${cam.name}`;
@@ -121,6 +140,9 @@ general.addEventListener('submit', (e) => {
       method: 'PUT',
       body: {
         refreshDelayMs: Number(general.refreshDelayMs.value),
+        defaultView: optionToView(general.defaultView.value),
+        streamMode: general.streamMode.value,
+        realtime: { fps: Number(general.fps.value), maxWidth: Number(general.maxWidth.value) },
         auth: { username: general.username.value, password: general.password.value },
       },
     });
@@ -144,6 +166,11 @@ form.addEventListener('submit', (e) => {
 });
 
 $('camera-cancel').addEventListener('click', resetForm);
+
+// "Mostrar senha": deixa conferir o que foi digitado antes de salvar.
+document.querySelectorAll('[data-reveal]').forEach((box) => {
+  box.addEventListener('change', () => box.closest('form').classList.toggle('reveal-secrets', box.checked));
+});
 
 run(async () => {
   config = await api('/api/config');

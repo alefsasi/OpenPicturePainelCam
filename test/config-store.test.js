@@ -70,6 +70,63 @@ test('delay da câmera é opcional e sobrescreve o global', () => {
   } finally { cleanup(); }
 });
 
+test('modo de atualização: snapshot por padrão, câmera sobrescreve o global', () => {
+  const { file, store, cleanup } = tmpStore();
+  try {
+    assert.equal(store.getPublic().streamMode, 'snapshot');
+    assert.deepEqual(store.getPublic().realtime, { fps: 10, maxWidth: 640 });
+
+    store.updateSettings({ refreshDelayMs: 1000, auth: {}, streamMode: 'realtime', realtime: { fps: 15, maxWidth: 800 } });
+    const live = store.addCamera({ name: 'A', ip: '10.0.0.1', streamMode: 'snapshot', rtspPort: '8554' });
+    const inherit = store.addCamera({ name: 'B', ip: '10.0.0.2', streamMode: '', rtspPort: '' });
+
+    const cams = Object.fromEntries(store.getPublic().cameras.map((c) => [c.id, c]));
+    assert.equal(store.getPublic().streamMode, 'realtime');
+    assert.equal(cams[live].streamMode, 'snapshot');
+    assert.equal(cams[live].rtspPort, 8554);
+    assert.equal(cams[inherit].streamMode, null); // null = herda o global
+    assert.equal(cams[inherit].rtspPort, null);
+    assert.deepEqual(createConfigStore(file).getPublic(), store.getPublic()); // persiste
+
+    // Atualizar só delay/credenciais (sem os campos novos) mantém o modo atual.
+    store.updateSettings({ refreshDelayMs: 2000, auth: {} });
+    assert.equal(store.getPublic().streamMode, 'realtime');
+    assert.deepEqual(store.getRealtime(), { fps: 15, maxWidth: 800 });
+  } finally { cleanup(); }
+});
+
+test('visualização padrão: 2x2 por padrão, persiste e valida', () => {
+  const { file, store, cleanup } = tmpStore();
+  try {
+    assert.deepEqual(store.getPublic().defaultView, { grid: 2, focus: false });
+
+    store.updateSettings({ refreshDelayMs: 1000, auth: {}, defaultView: { grid: 4, focus: true } });
+    assert.deepEqual(store.getPublic().defaultView, { grid: 4, focus: true });
+    assert.deepEqual(createConfigStore(file).getPublic().defaultView, { grid: 4, focus: true }); // sobrevive ao reinício
+
+    // sem o campo, mantém o atual
+    store.updateSettings({ refreshDelayMs: 2000, auth: {} });
+    assert.deepEqual(store.getPublic().defaultView, { grid: 4, focus: true });
+
+    assert.throws(() => store.updateSettings({ refreshDelayMs: 1000, auth: {}, defaultView: { grid: 5, focus: false } }), /Grid padrão/);
+    assert.throws(() => store.updateSettings({ refreshDelayMs: 1000, auth: {}, defaultView: { grid: 2, focus: true } }), /foco/);
+    assert.deepEqual(store.getPublic().defaultView, { grid: 4, focus: true }); // inválido não altera nada
+  } finally { cleanup(); }
+});
+
+test('valida modo, fps, largura e porta RTSP sem alterar nada quando inválido', () => {
+  const { store, cleanup } = tmpStore();
+  try {
+    const before = JSON.stringify(store.getPublic());
+    assert.throws(() => store.updateSettings({ refreshDelayMs: 1000, auth: {}, streamMode: 'hls' }), /Modo/);
+    assert.throws(() => store.updateSettings({ refreshDelayMs: 1000, auth: {}, realtime: { fps: 99, maxWidth: 640 } }), /FPS/);
+    assert.throws(() => store.updateSettings({ refreshDelayMs: 1000, auth: {}, realtime: { fps: 10, maxWidth: 50 } }), /Largura/);
+    assert.throws(() => store.addCamera({ name: 'x', ip: '10.0.0.1', streamMode: 'hls' }), /Modo/);
+    assert.throws(() => store.addCamera({ name: 'x', ip: '10.0.0.1', rtspPort: 70000 }), /Porta RTSP/);
+    assert.equal(JSON.stringify(store.getPublic()), before);
+  } finally { cleanup(); }
+});
+
 test('valida IP, delay e reordenação; exclui câmeras', () => {
   const { store, cleanup } = tmpStore();
   try {

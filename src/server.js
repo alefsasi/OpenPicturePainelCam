@@ -1,15 +1,20 @@
-// Servidor HTTP: arquivos estáticos + API de configuração + proxy de snapshots.
+// Servidor HTTP: arquivos estáticos + API de configuração + proxy de snapshots
+// + WebSocket de vídeo em tempo real (opcional, via FFmpeg).
 // O navegador nunca recebe IP/usuário/senha para falar com a câmera: quem
-// autentica (Digest) é este servidor.
+// autentica (Digest no snapshot, RTSP no tempo real) é este servidor.
 import { createServer as createHttpServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CameraError, createCameraClient } from './camera-client.js';
 import { ValidationError, createConfigStore } from './config-store.js';
+import { buildRtspUrl, createStreamHub } from './stream-hub.js';
+import { attachWebSocket } from './websocket.js';
 
 const PUBLIC_DIR = resolve(fileURLToPath(new URL('../public', import.meta.url)));
 const MAX_BODY = 64 * 1024;
+const MAX_WATCH = 32; // câmeras por conexão WebSocket
+const MAX_BUFFERED = 512 * 1024; // acima disso o cliente está lento: descarta quadros em vez de acumular atraso
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -60,9 +65,70 @@ async function serveStatic(pathname, res) {
   }
 }
 
-export function createServer({ configPath, timeoutMs } = {}) {
+export function createServer({ configPath, timeoutMs, ffmpegPath, spawn, streamOptions } = {}) {
   const store = createConfigStore(configPath);
   const cameras = createCameraClient({ timeoutMs });
+  const hub = createStreamHub({ ffmpegPath, spawn, ...streamOptions });
+
+  /** Visão pública + se o servidor consegue transmitir em tempo real (FFmpeg presente). */
+  function view() {
+    const pub = store.getPublic();
+    return { ...pub, realtime: { ...pub.realtime, available: hub.available } };
+  }
+
+  /** Fonte do vídeo ao vivo, lida de novo a cada (re)início para refletir a config atual. */
+  function realtimeSource(id) {
+    const cam = store.getCamera(id);
+    const { fps, maxWidth } = store.getRealtime();
+    return { url: buildRtspUrl(cam, store.credentialsFor(cam)), fps, width: maxWidth };
+  }
+
+  /**
+   * Um WebSocket por navegador leva todas as câmeras em tempo real da tela.
+   * Cliente -> servidor: {"watch": ["id", ...]} (lista completa do que está visível).
+   * Servidor -> cliente: texto {"id","state":"live"|"error","message"} e
+   * binário [1 byte: tamanho do id][id][JPEG].
+   */
+  function handleStream(conn) {
+    const watching = new Map(); // id -> cancelar assinatura
+    let queue = Promise.resolve();
+
+    function watch(id) {
+      const prefix = Buffer.concat([Buffer.from([Buffer.byteLength(id)]), Buffer.from(id)]);
+      const send = (payload) => conn.sendText(JSON.stringify({ id, ...payload }));
+      try {
+        watching.set(id, hub.subscribe(id, () => realtimeSource(id), {
+          onFrame: (frame) => { if (conn.buffered < MAX_BUFFERED) conn.sendBinary(prefix, frame); },
+          onStatus: (state, message) => send({ state, message }),
+        }));
+      } catch (err) {
+        send({ state: 'error', message: err.message });
+      }
+    }
+
+    async function update(ids) {
+      const wanted = new Set(ids.filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 64).slice(0, MAX_WATCH));
+      for (const [id, cancel] of watching) {
+        if (!wanted.has(id)) { cancel(); watching.delete(id); }
+      }
+      const ok = await hub.ready;
+      for (const id of wanted) {
+        if (conn.closed || conn.closing) return;
+        if (!ok) conn.sendText(JSON.stringify({ id, state: 'error', message: 'FFmpeg não encontrado no servidor' }));
+        else if (!watching.has(id)) watch(id);
+      }
+    }
+
+    conn.on('message', (text) => {
+      let msg;
+      try { msg = JSON.parse(text); } catch { return; }
+      if (Array.isArray(msg?.watch)) queue = queue.then(() => update(msg.watch)).catch(() => {});
+    });
+    conn.on('close', () => {
+      for (const cancel of watching.values()) cancel();
+      watching.clear();
+    });
+  }
 
   async function snapshot(id, req, res) {
     const cam = store.getCamera(id);
@@ -70,7 +136,9 @@ export function createServer({ configPath, timeoutMs } = {}) {
     const aborter = new AbortController();
     res.on('close', () => { if (!res.writableEnded) aborter.abort(); });
     try {
-      const { body, type } = await cameras.fetchSnapshot(cam, store.credentialsFor(cam), { signal: aborter.signal });
+      // `?force=1` (botão "Testar") ignora a pausa por senha recusada e tenta uma vez.
+      const force = new URL(req.url, 'http://localhost').searchParams.get('force') === '1';
+      const { body, type } = await cameras.fetchSnapshot(cam, store.credentialsFor(cam), { signal: aborter.signal, force });
       res.writeHead(200, { 'Content-Type': type, 'Content-Length': body.length, 'Cache-Control': 'no-store' });
       res.end(body);
     } catch (err) {
@@ -83,11 +151,15 @@ export function createServer({ configPath, timeoutMs } = {}) {
     const [, resource, id, action] = parts; // ['api', recurso, id, ação]
     const { method } = req;
 
-    if (resource === 'config' && method === 'GET') return sendJson(res, 200, store.getPublic());
+    if (resource === 'config' && method === 'GET') {
+      await hub.ready; // a primeira resposta já sabe se há FFmpeg
+      return sendJson(res, 200, view());
+    }
 
     if (resource === 'settings' && method === 'PUT') {
       store.updateSettings(await readJson(req));
-      return sendJson(res, 200, store.getPublic());
+      hub.resetAll(); // credenciais globais, fps e largura valem para todos os streams
+      return sendJson(res, 200, view());
     }
 
     if (resource === 'cameras') {
@@ -97,22 +169,24 @@ export function createServer({ configPath, timeoutMs } = {}) {
       }
       if (id === 'order' && method === 'PUT') {
         store.reorder((await readJson(req)).ids);
-        return sendJson(res, 200, store.getPublic());
+        return sendJson(res, 200, view());
       }
       if (id && action === 'snapshot' && method === 'GET') return snapshot(id, req, res);
       if (id && !action && method === 'PUT') {
         store.updateCamera(id, await readJson(req));
-        return sendJson(res, 200, store.getPublic());
+        hub.reset(id);
+        return sendJson(res, 200, view());
       }
       if (id && !action && method === 'DELETE') {
         store.removeCamera(id);
-        return sendJson(res, 200, store.getPublic());
+        hub.reset(id);
+        return sendJson(res, 200, view());
       }
     }
     sendJson(res, 404, { error: 'Rota não encontrada' });
   }
 
-  return createHttpServer(async (req, res) => {
+  const server = createHttpServer(async (req, res) => {
     try {
       const { pathname } = new URL(req.url, 'http://localhost');
       const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -128,4 +202,8 @@ export function createServer({ configPath, timeoutMs } = {}) {
       sendJson(res, 500, { error: 'Erro interno' });
     }
   });
+
+  attachWebSocket(server, '/api/stream', handleStream);
+  server.on('close', () => hub.closeAll());
+  return server;
 }

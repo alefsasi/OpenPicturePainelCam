@@ -114,6 +114,15 @@ body.viewer { height: 100vh; display: flex; flex-direction: column; overflow: hi
 .tile .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
 .tile.offline .dot { background: var(--bad); }
+.tile .badge {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
 .tile .focus-btn { opacity: 0; padding: 0 6px; font-size: 16px; }
 .tile:hover .focus-btn, .tile .focus-btn:focus-visible { opacity: 1; }
 
@@ -178,6 +187,8 @@ body.settings { max-width: 860px; margin: 0 auto; padding: 16px; }
 .settings header { display: flex; align-items: center; justify-content: space-between; }
 .settings h1 { font-size: 20px; margin: 8px 0; }
 .settings h2 { font-size: 16px; margin: 0 0 12px; }
+.settings h2.sub { margin-top: 20px; }
+.note.warn { color: #f5b942; }
 
 .card {
   background: var(--panel);
@@ -189,13 +200,21 @@ body.settings { max-width: 860px; margin: 0 auto; padding: 16px; }
 
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
-input {
+input, select {
+  font: inherit;
+  color: inherit;
   padding: 7px 9px;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
-input:focus { border-color: var(--accent); outline: none; }
+input:focus, select:focus { border-color: var(--accent); outline: none; }
+
+/* Senha como texto mascarado: o navegador não a trata como campo de senha, então não
+   sugere senha forte, não oferece salvar e não preenche sozinho com uma senha antiga. */
+input.secret { -webkit-text-security: disc; text-security: disc; }
+.reveal-secrets input.secret { -webkit-text-security: none; text-security: none; }
+label.inline { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; }
 .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
 .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 

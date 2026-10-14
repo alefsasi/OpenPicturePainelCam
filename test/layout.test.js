@@ -11,6 +11,19 @@ test('parseQuery: valores inválidos caem no padrão', () => {
   assert.deepEqual(parseQuery('?grid=4&page=2&focus=c9'), { grid: 4, focusId: 'c9', page: 2 });
 });
 
+test('parseQuery: sem grid na URL vale a visualização padrão salva; com grid, a URL vence', () => {
+  const cams = [{ id: 'c1' }, { id: 'c2' }];
+  assert.deepEqual(parseQuery('', { grid: 4, focus: false }, cams), { grid: 4, focusId: null, page: 1 });
+  // padrão com foco: a primeira câmera da lista fica em destaque
+  assert.deepEqual(parseQuery('', { grid: 3, focus: true }, cams), { grid: 3, focusId: 'c1', page: 1 });
+  assert.deepEqual(parseQuery('?page=2', { grid: 3, focus: true }, cams), { grid: 3, focusId: 'c1', page: 2 });
+  // a URL explícita não herda o foco do padrão
+  assert.deepEqual(parseQuery('?grid=3', { grid: 4, focus: true }, cams), { grid: 3, focusId: null, page: 1 });
+  assert.deepEqual(parseQuery('?grid=2', { grid: 3, focus: true }, cams), { grid: 2, focusId: null, page: 1 });
+  // sem câmeras não há foco
+  assert.equal(parseQuery('', { grid: 3, focus: true }, []).focusId, null);
+});
+
 test('grid 2x2 com 9 câmeras mostra só 4 e pagina', () => {
   const all = cams(9);
   assert.deepEqual(ids(computeView({ grid: 2, page: 1 }, all)), ['c1', 'c2', 'c3', 'c4']);

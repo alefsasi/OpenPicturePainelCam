@@ -1,8 +1,11 @@
 {
   "refreshDelayMs": 1000,
+  "defaultView": { "grid": 3, "focus": false },
+  "streamMode": "snapshot",
+  "realtime": { "fps": 10, "maxWidth": 640 },
   "auth": { "username": "admin", "password": "change-me" },
   "cameras": [
-    { "id": "a1b2c3d4", "name": "Entrada", "ip": "192.168.0.10", "username": "", "password": "", "refreshDelayMs": null },
-    { "id": "e5f6a7b8", "name": "Garagem", "ip": "192.168.0.11:8080", "username": "outro-user", "password": "outra-senha", "refreshDelayMs": 500 }
+    { "id": "a1b2c3d4", "name": "Entrada", "ip": "192.168.0.10", "username": "", "password": "", "refreshDelayMs": null, "streamMode": null, "rtspPort": null },
+    { "id": "e5f6a7b8", "name": "Garagem", "ip": "192.168.0.11:8080", "username": "outro-user", "password": "outra-senha", "refreshDelayMs": 500, "streamMode": "realtime", "rtspPort": 554 }
   ]
 }
