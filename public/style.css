@@ -58,7 +58,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ---- Tela principal ---- */
 
-body.viewer { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+body.viewer { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 
 .topbar {
   display: flex;
@@ -77,20 +77,22 @@ body.viewer { height: 100vh; display: flex; flex-direction: column; overflow: hi
 .segmented a:hover { background: var(--line); }
 .segmented a.active { background: var(--accent); color: #fff; }
 
+.segmented a { display: inline-flex; align-items: center; gap: 6px; }
+.segmented .icon { font-size: 15px; line-height: 1; }
+
+.topbar .per { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.topbar .per select { padding: 4px 6px; }
+.topbar #fit { padding: 5px 10px; gap: 6px; white-space: nowrap; }
+
 .pager { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 
-.grid {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr));
-  grid-template-rows: repeat(var(--n, 2), minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-}
+/* Área das câmeras: os tiles são posicionados em pixels pelo motor de layout (packing.js). */
+.grid { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.grid.scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.canvas { position: relative; width: 100%; }
 
 .tile {
-  position: relative;
+  position: absolute;
   margin: 0;
   min-width: 0;
   min-height: 0;
@@ -99,6 +101,7 @@ body.viewer { height: 100vh; display: flex; flex-direction: column; overflow: hi
   overflow: hidden;
 }
 .tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.grid.cover .tile img { object-fit: cover; } /* "Preencher": o tile é cheio, a imagem corta nas bordas */
 .tile img:not([src]) { visibility: hidden; }
 
 .tile figcaption {
@@ -114,8 +117,28 @@ body.viewer { height: 100vh; display: flex; flex-direction: column; overflow: hi
 .tile .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
 .tile.offline .dot { background: var(--bad); }
+.tile .badge {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
 .tile .focus-btn { opacity: 0; padding: 0 6px; font-size: 16px; }
 .tile:hover .focus-btn, .tile .focus-btn:focus-visible { opacity: 1; }
+/* Sem mouse (celular/tablet) não existe "passar o mouse": o botão fica sempre visível e maior. */
+@media (hover: none) {
+  .tile .focus-btn { opacity: .9; padding: 4px 8px; font-size: 18px; }
+}
+.tile.featured { outline: 1px solid rgba(79, 140, 255, .5); outline-offset: -1px; }
+
+/* Miniaturas: legenda enxuta, para não ocupar a imagem. */
+.tile.compact figcaption { padding: 2px 5px; gap: 4px; font-size: 11px; }
+.tile.compact .dot { width: 6px; height: 6px; }
+.tile.compact .msg { display: none !important; } /* pequeno demais: só o ponto vermelho indica a falha */
+.tile.compact .focus-btn { padding: 0 4px; font-size: 14px; }
 
 .tile .msg {
   display: none;
@@ -133,8 +156,8 @@ body.viewer { height: 100vh; display: flex; flex-direction: column; overflow: hi
 .tile.offline img[src] { opacity: .55; }
 
 .empty {
-  grid-column: 1 / -1;
-  grid-row: 1 / -1;
+  position: absolute;
+  inset: 0;
   display: grid;
   place-content: center;
   gap: 12px;
@@ -178,6 +201,8 @@ body.settings { max-width: 860px; margin: 0 auto; padding: 16px; }
 .settings header { display: flex; align-items: center; justify-content: space-between; }
 .settings h1 { font-size: 20px; margin: 8px 0; }
 .settings h2 { font-size: 16px; margin: 0 0 12px; }
+.settings h2.sub { margin-top: 20px; }
+.note.warn { color: #f5b942; }
 
 .card {
   background: var(--panel);
@@ -189,13 +214,21 @@ body.settings { max-width: 860px; margin: 0 auto; padding: 16px; }
 
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
-input {
+input, select {
+  font: inherit;
+  color: inherit;
   padding: 7px 9px;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
-input:focus { border-color: var(--accent); outline: none; }
+input:focus, select:focus { border-color: var(--accent); outline: none; }
+
+/* Senha como texto mascarado: o navegador não a trata como campo de senha, então não
+   sugere senha forte, não oferece salvar e não preenche sozinho com uma senha antiga. */
+input.secret { -webkit-text-security: disc; text-security: disc; }
+.reveal-secrets input.secret { -webkit-text-security: none; text-security: none; }
+label.inline { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; }
 .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
 .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 
@@ -214,4 +247,32 @@ input:focus { border-color: var(--accent); outline: none; }
 
 @media (max-width: 640px) {
   .topbar h1 { display: none; }
+}
+
+/* ---- Login e senha das configurações ---- */
+
+.card.narrow { max-width: 360px; margin-inline: auto; }
+.row.tight { margin-top: 0; }
+.banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.banner.warn { border-color: #f5b942; color: #f5b942; }
+.banner a { text-decoration: underline; }
+.table-wrap { overflow-x: auto; }
+
+
+/* ---- Telas estreitas (celular): controles compactos, só ícones ---- */
+@media (max-width: 700px) {
+  .topbar { gap: 8px; padding: 4px 8px; }
+  .segmented .text,
+  .topbar #fit .text,
+  .topbar .per .text { display: none; }
+  .segmented a { padding: 6px 12px; }
+  .segmented .icon { font-size: 18px; }
+  .topbar #fit { padding: 6px 12px; }
+  .topbar .per select { padding: 6px; }
 }

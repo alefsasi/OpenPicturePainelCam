@@ -5,6 +5,12 @@ import { createHash, randomBytes } from 'node:crypto';
 export const PICTURE_PATH = '/ISAPI/Streaming/channels/102/picture';
 const MAX_BYTES = 8 * 1024 * 1024;
 
+// Tempo sem tentar de novo depois que a câmera recusa usuário/senha.
+export const AUTH_PAUSE_MS = 10 * 60_000;
+
+/** Identifica a senha sem guardá-la em memória solta (usado só como chave de comparação). */
+export const credentialsFingerprint = (password) => createHash('sha256').update(String(password)).digest('hex').slice(0, 16);
+
 const HASHES = { 'MD5': 'md5', 'SHA-256': 'sha256' };
 const hash = (algo, s) => createHash(HASHES[algo]).update(s).digest('hex');
 
@@ -53,8 +59,12 @@ export function digestAuthorization(challenge, { username, password, method, uri
  * requisição cada snapshot custa apenas 1 round-trip (o nonce é reaproveitado
  * até a câmera responder 401 de novo).
  */
-export function createCameraClient({ timeoutMs = 5000 } = {}) {
+export function createCameraClient({ timeoutMs = 5000, authPauseMs = AUTH_PAUSE_MS } = {}) {
   const challenges = new Map(); // "host|user" -> desafio Digest | { basic: true }
+  // Credenciais que a câmera já recusou -> até quando ficamos sem tentar de novo.
+  // A chave inclui um hash da senha, então corrigir a senha no painel libera na hora.
+  const rejected = new Map();
+  const rejectionKey = (ip, { username, password }) => `${ip}|${username}|${credentialsFingerprint(password)}`;
 
   async function request(url, authorization, signal) {
     const res = await fetch(url, {
@@ -70,9 +80,19 @@ export function createCameraClient({ timeoutMs = 5000 } = {}) {
     return digestAuthorization(entry, { username, password, method: 'GET', uri });
   }
 
-  async function fetchSnapshot({ ip }, credentials, { signal } = {}) {
+  async function fetchSnapshot({ ip }, credentials, { signal, force = false } = {}) {
     const url = `http://${ip}${PICTURE_PATH}`;
     const key = `${ip}|${credentials.username}`;
+
+    // Câmeras Hikvision bloqueiam o login (~30 min) após poucas tentativas erradas.
+    // Por isso, depois de uma recusa, não insistimos com as mesmas credenciais.
+    const blockedKey = rejectionKey(ip, credentials);
+    const blockedUntil = rejected.get(blockedKey) ?? 0;
+    if (!force && blockedUntil > Date.now()) {
+      const minutes = Math.ceil((blockedUntil - Date.now()) / 60_000);
+      throw new CameraError(`Usuário ou senha inválidos. Tentativas pausadas por ${minutes} min para a câmera não bloquear`, 401);
+    }
+    rejected.delete(blockedKey);
     const timeout = AbortSignal.timeout(timeoutMs);
     const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
 
@@ -90,6 +110,7 @@ export function createCameraClient({ timeoutMs = 5000 } = {}) {
         if (res.status === 401) {
           await res.body?.cancel();
           challenges.delete(key);
+          rejected.set(blockedKey, Date.now() + authPauseMs);
           throw new CameraError('Usuário ou senha inválidos', 401);
         }
       }

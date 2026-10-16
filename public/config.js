@@ -17,9 +17,63 @@ async function api(path, options = {}) {
     body: options.body && JSON.stringify(options.body),
   });
   const body = await res.json().catch(() => ({}));
+  // Sessão expirada (ou painel reiniciado): volta para a tela de login, sem exibir lixo.
+  if (res.status === 401 && path !== '/api/login') {
+    showLogin();
+    throw new Error('Sua sessão expirou. Entre novamente.');
+  }
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
   return body;
 }
+
+// ---- Login ----------------------------------------------------------------------------
+
+function showLogin() {
+  $('login').hidden = false;
+  $('content').hidden = true;
+  $('logout').hidden = true;
+  $('login').password.focus();
+}
+
+async function enter(session) {
+  $('login').hidden = true;
+  $('content').hidden = false;
+  $('logout').hidden = false;
+  $('default-password-warning').hidden = !session.usingDefaultPassword;
+  config = await api('/api/config');
+  renderAll();
+}
+
+$('login').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const session = await api('/api/login', { method: 'POST', body: { password: $('login').password.value } });
+    $('login').reset();
+    status('');
+    await enter(session);
+  } catch (err) {
+    status(err.message, 'error');
+    $('login').password.select();
+  }
+});
+
+$('logout').addEventListener('click', async () => {
+  await api('/api/logout', { method: 'POST', body: {} }).catch(() => {});
+  config = null;
+  status('Você saiu.');
+  showLogin();
+});
+
+$('password-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = $('password-form');
+  if (f.next.value !== f.repeat.value) return status('As duas senhas novas não são iguais.', 'error');
+  run(async () => {
+    const result = await api('/api/password', { method: 'PUT', body: { current: f.current.value, next: f.next.value } });
+    f.reset();
+    $('default-password-warning').hidden = !result.usingDefaultPassword;
+  }, 'Senha trocada. Os outros dispositivos precisam entrar de novo.');
+});
 
 function status(message, kind = 'ok') {
   const node = $('status');
@@ -41,7 +95,17 @@ function credentialsLabel(cam) {
   return config.auth.username ? 'Global' : 'Nenhuma';
 }
 
+const MODE_NAMES = { snapshot: 'Snapshot', realtime: 'Tempo real' };
+
+function modeLabel(cam) {
+  return cam.streamMode ? MODE_NAMES[cam.streamMode] : `Padrão (${MODE_NAMES[config.streamMode]})`;
+}
+
 function renderAll() {
+  general.streamMode.value = config.streamMode;
+  general.fps.value = config.realtime.fps;
+  general.maxWidth.value = config.realtime.maxWidth;
+  $('realtime-note').hidden = config.realtime.available;
   general.refreshDelayMs.value = config.refreshDelayMs;
   general.username.value = config.auth.username;
   general.password.value = '';
@@ -54,6 +118,7 @@ function renderAll() {
       el('td', {}, cam.name),
       el('td', {}, cam.ip),
       el('td', {}, credentialsLabel(cam)),
+      el('td', {}, modeLabel(cam)),
       el('td', {}, cam.refreshDelayMs ? `${cam.refreshDelayMs} ms` : `Global (${config.refreshDelayMs} ms)`),
       el('td', { className: 'actions' },
         el('button', { className: 'btn', type: 'button', onclick: () => testCamera(cam, result) }, 'Testar'),
@@ -70,7 +135,8 @@ async function testCamera(cam, result) {
   result.className = 'result';
   result.textContent = 'testando…';
   try {
-    const res = await fetch(`/api/cameras/${cam.id}/snapshot?t=${Date.now()}`, { cache: 'no-store' });
+    // force=1: o teste manual tenta mesmo que o painel tenha pausado por senha recusada.
+    const res = await fetch(`/api/cameras/${cam.id}/snapshot?force=1&t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
     const kb = ((await res.blob()).size / 1024).toFixed(0);
     result.className = 'result ok';
@@ -87,6 +153,8 @@ function startEdit(cam) {
   form.ip.value = cam.ip;
   form.username.value = cam.username;
   form.refreshDelayMs.value = cam.refreshDelayMs ?? '';
+  form.streamMode.value = cam.streamMode ?? '';
+  form.rtspPort.value = cam.rtspPort ?? '';
   form.password.value = '';
   form.password.placeholder = cam.hasPassword ? '•••••• (definida)' : '';
   $('camera-form-title').textContent = `Editando: ${cam.name}`;
@@ -121,6 +189,8 @@ general.addEventListener('submit', (e) => {
       method: 'PUT',
       body: {
         refreshDelayMs: Number(general.refreshDelayMs.value),
+        streamMode: general.streamMode.value,
+        realtime: { fps: Number(general.fps.value), maxWidth: Number(general.maxWidth.value) },
         auth: { username: general.username.value, password: general.password.value },
       },
     });
@@ -145,7 +215,13 @@ form.addEventListener('submit', (e) => {
 
 $('camera-cancel').addEventListener('click', resetForm);
 
+// "Mostrar senha": deixa conferir o que foi digitado antes de salvar.
+document.querySelectorAll('[data-reveal]').forEach((box) => {
+  box.addEventListener('change', () => box.closest('form').classList.toggle('reveal-secrets', box.checked));
+});
+
 run(async () => {
-  config = await api('/api/config');
-  renderAll();
+  const session = await api('/api/session');
+  if (session.authenticated) await enter(session);
+  else showLogin();
 });
