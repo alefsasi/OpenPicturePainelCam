@@ -10,7 +10,9 @@
   <header class="topbar">
     <button id="menu-btn" class="icon-btn" aria-label="Abrir menu" aria-expanded="false" aria-controls="drawer">☰</button>
     <h1>Painel de Câmeras</h1>
-    <nav id="layouts" class="segmented" aria-label="Layout da grid"></nav>
+    <nav id="layouts" class="segmented" aria-label="Disposição das câmeras"></nav>
+    <label class="per" title="Câmeras por página"><span class="text">Por página</span> <select id="per"></select></label>
+    <a id="fit" class="btn"></a>
     <nav id="pager" class="pager" aria-label="Paginação"></nav>
   </header>
 
@@ -19,7 +21,7 @@
       <strong>Câmeras</strong>
       <a class="btn" href="/config.html">⚙ Configurações</a>
     </div>
-    <p class="hint">Arraste ou use ▲▼ para mudar a ordem.</p>
+    <p class="hint" id="drawer-hint"></p>
     <ol id="drawer-list" class="cam-list"></ol>
   </aside>
   <div id="scrim" class="scrim" hidden></div>

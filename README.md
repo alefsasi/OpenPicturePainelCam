@@ -1,6 +1,6 @@
 # Open Picture Painel Cam
 
-Painel web leve para câmeras IP Hikvision no modo **Picture** (snapshots JPEG atualizados em intervalo, em vez de vídeo/RTSP). Node.js puro, **zero dependências**.
+Painel web leve para câmeras IP Hikvision no modo **Picture** (snapshots JPEG atualizados em intervalo, em vez de vídeo/RTSP), com **vídeo em tempo real opcional**. Node.js puro, **zero dependências**. Veja o [histórico de mudanças](CHANGELOG.md).
 
 Cada câmera é lida em `http://<ip>/ISAPI/Streaming/channels/102/picture` com usuário e senha (Digest ou Basic).
 
@@ -15,7 +15,7 @@ Na página de [Releases](../../releases) baixe o pacote do seu sistema. Eles já
 | `…-linux-arm64.tar.gz` | Linux ARM 64 bits (Raspberry Pi 4/5 com sistema de 64 bits) |
 | `…-sem-node.zip` | Qualquer sistema que já tenha Node 20.3+ instalado (pacote minúsculo) |
 
-**Windows:** extraia o `.zip` e dê duplo clique em `start.bat`. Abra http://127.0.0.1:7391.
+**Windows:** extraia o `.zip` e dê duplo clique em `start.bat` (roda nesta janela) ou em `painel.bat` (menu para rodar em segundo plano, parar e iniciar com o Windows). Abra http://127.0.0.1:7391.
 
 **Linux:**
 ```bash
@@ -24,7 +24,8 @@ cd open-picture-painel-cam-*-linux-x64
 ./start.sh
 ```
 
-- **Atualizar:** extraia a versão nova em outra pasta e copie a pasta `data/` da antiga (é lá que ficam suas câmeras e senhas).
+- **Primeiro acesso:** abra *Configurações* (⚙ no menu ☰) e entre com a senha padrão **`admin`**; troque-a em seguida (veja [Senha de acesso](#senha-de-acesso)). Depois cadastre as câmeras.
+- **Atualizar:** extraia a versão nova em outra pasta e copie a pasta `data/` da antiga (é lá que ficam suas câmeras e senhas). Pare o painel antigo antes (`stop`). Veja as notas de cada versão no [CHANGELOG](CHANGELOG.md).
 - **Tempo real:** coloque o `ffmpeg` (`ffmpeg.exe` no Windows) dentro da pasta `runtime/`. O `start` o encontra sozinho. O FFmpeg não vai embutido por causa da licença; veja [Tempo real](#tempo-real-opcional).
 - **Conferir o download:** compare com o `SHA256SUMS.txt` da release (`sha256sum -c SHA256SUMS.txt`, ou `Get-FileHash` no PowerShell).
 
@@ -35,7 +36,7 @@ Para iniciar o painel com um único comando, `painel-cam`, em qualquer terminal,
 **Windows (PowerShell, sem precisar de administrador).** Ajuste `$app` para a pasta onde extraiu o `.zip`:
 
 ```powershell
-$app = "C:\Apps\open-picture-painel-cam-v1.0.0-win-x64"
+$app = "C:\Apps\open-picture-painel-cam-v1.1.0-win-x64"
 $bin = "$env:USERPROFILE\bin"
 
 # cria o atalho painel-cam.cmd
@@ -82,6 +83,7 @@ Sem comando, o `start` roda preso à janela do terminal (fechou, parou). Com os 
 | `logs` | Mostra o final do log |
 | `menu` | Menu interativo |
 | `autostart on` / `off` / `status` | Liga, desliga ou mostra o início automático |
+| `reset-password` | Volta a senha das configurações para a padrão (`admin`), se você a esqueceu |
 
 Use-os com o script do seu sistema: `.\painel.bat start` / `.\painel.bat stop` no Windows, `./start.sh start` / `./start.sh stop` no Linux (ou `painel-cam start`, se criou o atalho acima). **No Windows, dê duplo clique em `painel.bat`** para ter um menu com essas opções, sem digitar nada.
 
@@ -112,7 +114,7 @@ cd ~/painel-cam
 **Acessar de outro computador (por exemplo, do Windows).** Por segurança o painel só escuta em `127.0.0.1`. Há duas formas:
 
 1. **Túnel SSH (mais seguro).** No outro computador: `ssh -L 7391:127.0.0.1:7391 usuario@servidor` e abra http://127.0.0.1:7391. Nada é exposto na rede.
-2. **Escutar na rede.** Crie `data/painel.env` com `HOST=0.0.0.0`, reinicie e acesse `http://IP-DO-SERVIDOR:7391` (libere a porta no firewall, se houver). O painel **não tem login**: quem alcançar a porta vê as câmeras e altera a configuração. Use só em rede confiável.
+2. **Escutar na rede.** Crie `data/painel.env` com `HOST=0.0.0.0`, reinicie e acesse `http://IP-DO-SERVIDOR:7391` (libere a porta no firewall, se houver). Ver as câmeras **não exige login**, e as configurações pedem a [senha de acesso](#senha-de-acesso), que trafega sem criptografia (HTTP). Troque a senha padrão e use só em rede confiável.
 
 Observações para sistemas mínimos:
 
@@ -163,35 +165,63 @@ Requer Node 20.3 ou superior. Variáveis opcionais:
 
 `PORT`, `HOST` e `FFMPEG_PATH` também podem ficar em `data/painel.env` (veja [Opções do servidor](#opções-do-servidor-datapainelenv)). Para rodar sem janela e iniciar com o sistema, veja [Rodar em segundo plano](#rodar-em-segundo-plano-parar-e-iniciar-com-o-sistema).
 
-> A API de configuração **não tem login**. Ao usar `HOST=0.0.0.0`, exponha o painel apenas em rede confiável.
+> Ver as câmeras não exige login; as configurações e alterações pedem a [senha de acesso](#senha-de-acesso) (padrão `admin`, troque-a). Como a conexão é HTTP, ao usar `HOST=0.0.0.0` exponha o painel apenas em rede confiável ou use um túnel SSH.
 
 ## Funcionalidades
 
-- **Grid principal** (`/`): 1, 2×2, 3×3 ou 4×4 câmeras.
-- **Câmera em foco**: em 3×3 ela ocupa 4 posições (2×2); em 4×4 ocupa 9 (3×3). Clique em ⤢ no tile para destacar. A câmera em foco fica fixa em todas as páginas e as demais se distribuem nas posições restantes.
-- **Paginação** quando há mais câmeras que posições, refletida na querystring.
-- **Só as câmeras visíveis são consultadas**: trocar de página ou de grid para as requisições das demais; abas em segundo plano também pausam.
-- **Menu lateral (☰)**: ordem das câmeras (arrastar ou ▲▼) e atalho para as configurações.
+- **Visualizações** (`/`): *Iguais*, *1 destaque* ou *2 destaques*, com as câmeras sempre em 16:9, ocupando a tela sem sobras e do jeito certo para desktop, tablet e celular. Veja [Visualizações](#visualizações).
+- **Só as câmeras visíveis são consultadas**: o que sai da tela (outra página, rolagem, aba oculta) deixa de ser pedido às câmeras.
+- **Menu lateral (☰)**: ordem das câmeras (arrastar ou ▲▼; exige login) e atalho para as configurações.
+- **Segundo plano e início automático**: roda sem janela, para com um comando e pode iniciar com o Windows ou com o Linux (opcional). Veja [Rodar em segundo plano](#rodar-em-segundo-plano-parar-e-iniciar-com-o-sistema).
+- **Senha de acesso**: protege as configurações e as alterações; assistir as câmeras continua livre. Veja [Senha de acesso](#senha-de-acesso).
 - **Configurações** (`/config.html`): cadastrar, editar, excluir e testar câmeras; delay global entre atualizações (padrão 1000 ms) com opção de delay próprio por câmera, que sobrescreve o global; usuário/senha globais ou individuais por câmera.
 - **Tempo real (opcional)**: vídeo contínuo a partir do sub-stream RTSP, por câmera ou global. Veja [Tempo real](#tempo-real-opcional). O modo snapshot continua sendo o padrão e não muda.
 
-- **Visualização padrão**: em `/config.html` você escolhe qual grid abre por padrão (1, 2×2, 3×3, 4×4 ou 3×3/4×4 com foco). Vale quando o endereço não traz `?grid=`; links com `?grid=` continuam mandando.
+## Visualizações
+
+Na barra do topo você escolhe como ver as câmeras. Tudo fica **salvo no navegador** de cada aparelho (`localStorage`, não vai para o `config.json`) e é reaberto quando o endereço não traz parâmetros.
+
+| Controle | Opções |
+| -------- | ------ |
+| **Disposição** | **Iguais** (todas do mesmo tamanho) · **1 destaque** (uma grande e as outras menores) · **2 destaques** |
+| **Por página** | **Auto** (o máximo que cabe sem ficar pequeno demais) · **Todas** · 1, 2, 4, 6, 9, 12 ou 16 (os destaques contam e ficam fixos em todas as páginas) |
+| **Ajuste** | **Inteira** (imagem sem cortar, em 16:9 exato) · **Preencher** (cobre 100% da área e corta um pouco das bordas) |
+
+Clique em ⤢ numa câmera para destacá-la (⤡ para tirar do destaque). Com 2 destaques, a terceira escolhida entra no lugar da mais antiga.
+
+**Como o espaço é aproveitado.** O painel calcula a posição de cada câmera conforme o tamanho da janela, em vez de usar uma grade fixa:
+
+- **Desktop e tablet deitado:** tudo cabe na tela, sem rolagem. O programa escolhe o número de colunas e a divisão entre destaque e miniaturas que deixam as câmeras maiores. Com *Inteira*, a imagem nunca é cortada e a cobertura da tela costuma ficar entre 75% e 98% (medido em monitores, notebooks e tablets); com 2 ou 3 câmeras iguais numa tela bem larga sobra uma faixa maior, porque vídeo 16:9 não cobre essa área (use *Preencher* para eliminar a faixa).
+- **Celular e tablet em pé:** as câmeras ocupam a largura e a página rola. O programa usa o maior número de colunas que ainda preenche a altura da tela, e as miniaturas ficam sempre menores que o destaque. Com poucas câmeras sobra espaço inevitável (um único vídeo 16:9 não preenche uma tela vertical); com *Preencher* as alturas são esticadas para cobrir mais.
+- **Primeira visita:** no celular começa com *1 destaque*; nos outros aparelhos, com *Iguais*.
+- **Miniaturas** (câmeras com menos de 220 px de largura): sempre em snapshot, no máximo a cada 3 s, mesmo se a câmera estiver em tempo real. Poupa dados, bateria e FFmpeg.
+- **Girar o aparelho ou redimensionar a janela** reposiciona as câmeras sem recarregar nem refazer as requisições.
 
 ### Querystring
 
-| Parâmetro | Valores                 | Exemplo                               |
-| --------- | ----------------------- | ------------------------------------- |
-| `grid`    | `1`, `2`, `3`, `4`      | `/?grid=2`                            |
-| `focus`   | id da câmera (só 3 e 4) | `/?grid=3&focus=a1b2c3d4`             |
-| `page`    | `1`, `2`, …             | `/?grid=4&focus=a1b2c3d4&page=2`      |
+| Parâmetro | Valores | Exemplo |
+| --------- | ------- | ------- |
+| `layout` | `equal`, `focus1`, `focus2` | `/?layout=focus1` |
+| `per` | `auto`, `all`, `1`…`64` | `/?layout=equal&per=9` |
+| `focus` | ids das câmeras em destaque, separados por vírgula | `/?layout=focus2&focus=a1b2c3d4,e5f6a7b8` |
+| `fit` | `contain` (padrão), `cover` | `/?layout=equal&fit=cover` |
+| `page` | `1`, `2`, … | `/?layout=equal&per=4&page=2` |
+
+Links da versão antiga (`?grid=3`, `?grid=4&focus=id`) continuam funcionando.
+
+## Senha de acesso
+
+- **O que protege:** a tela de configurações e **qualquer alteração**: cadastrar, editar e excluir câmeras, salvar as configurações, reordenar no menu ☰, trocar a senha e o botão *Testar*. **Assistir as câmeras continua livre.** Quem não entrou só recebe o nome e o modo das câmeras: IP, usuário e porta ficam escondidos.
+- **Senha padrão: `admin`.** Enquanto ela estiver em uso, a tela de configurações mostra um aviso. Troque-a em *Configurações → Senha de acesso* (mínimo 6 caracteres; não pode ser `admin`).
+- **Como é guardada:** só o hash (scrypt) em `config.json`, nunca a senha em texto puro. O login vira um cookie `HttpOnly` e `SameSite=Strict` válido por 12 h; as sessões ficam em memória, então reiniciar o painel pede novo login, e trocar a senha derruba os outros dispositivos. Cinco senhas erradas seguidas bloqueiam aquele endereço por 1 minuto.
+- **Esqueceu a senha?** No computador do painel: `painel.bat reset-password` (Windows) ou `./start.sh reset-password` (Linux). Funciona com o painel rodando ou parado e volta para `admin`.
+- **Atenção:** a conexão é HTTP, então na rede a senha trafega **sem criptografia**. Troque a senha padrão e use só em rede confiável, ou acesse por túnel SSH (veja [Linux mínimo](#linux-mínimo--servidor-sem-tela)).
 
 ## Configuração local
 
 Salva em `data/config.json` (ignorado pelo git; veja [config.example.json](config.example.json) para o formato). Contém IPs e senhas em texto puro: **não commite**.
 
 Credenciais: se a câmera tiver usuário próprio, usa o dela; senão usa o usuário/senha globais.
-
-Visualização padrão: `defaultView` é `{ "grid": 1-4, "focus": true|false }` (padrão `{ "grid": 2, "focus": false }`); `focus` só vale com `grid` 3 ou 4 e destaca a primeira câmera da lista.
 
 Delay: se a câmera tiver `refreshDelayMs`, ele sobrescreve o global; vazio/`null` usa o global (vale só para snapshots).
 
@@ -231,4 +261,4 @@ Protocolo do WebSocket (para quem quiser integrar outro cliente): o cliente envi
 npm test
 ```
 
-Cobrem layout/paginação, Digest (vetor da RFC 2617), configuração, o proxy contra uma câmera falsa e o streaming (hub, separador de JPEG e WebSocket) contra um FFmpeg simulado, então **não precisam do FFmpeg instalado**. Nenhum teste usa IPs ou credenciais reais. Os testes de WebSocket exigem Node 22+ (o cliente `WebSocket` global); em versões anteriores eles são pulados.
+Cobrem: cálculo de layout (cada câmera aparece uma vez, nada sai da tela nem se sobrepõe, tiles 16:9 exatos, cobertura mínima em vários tamanhos de tela), querystring e preferências, Digest (vetor da RFC 2617), configuração, senha de acesso (hash, sessões, limite de tentativas, rotas protegidas), o proxy contra uma câmera falsa, o streaming (hub, separador de JPEG e WebSocket) contra um FFmpeg simulado, a CLI (iniciar, parar, status, redefinir senha) e o empacotamento (ZIP/TAR.GZ). **Não precisam do FFmpeg instalado.** Nenhum teste usa IPs ou credenciais reais. Os testes de WebSocket exigem Node 22+ (o cliente `WebSocket` global); em versões anteriores eles são pulados.

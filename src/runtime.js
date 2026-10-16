@@ -117,8 +117,9 @@ export async function ping(info, timeoutMs = 1500) {
   }
 }
 
-export async function requestShutdown(info, timeoutMs = 3000) {
-  const res = await fetch(`${baseUrl(info)}/api/shutdown`, {
+/** Pedido da CLI a uma instância no mesmo computador (o servidor exige loopback e o PID certo). */
+export async function postLocal(info, path, timeoutMs = 3000) {
+  const res = await fetch(`${baseUrl(info)}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pid: info.pid }),
@@ -126,3 +127,5 @@ export async function requestShutdown(info, timeoutMs = 3000) {
   });
   return res.ok;
 }
+
+export const requestShutdown = (info, timeoutMs) => postLocal(info, '/api/shutdown', timeoutMs);

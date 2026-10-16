@@ -2,6 +2,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { DEFAULT_PASSWORD, MIN_PASSWORD_LENGTH, hashPassword, isPasswordHash, safeEqual, verifyPassword } from './auth.js';
 
 export const DEFAULT_DELAY_MS = 1000;
 const MIN_DELAY_MS = 100;
@@ -63,25 +64,13 @@ function parseRealtime(input) {
   return { fps, maxWidth };
 }
 
-// Visualização usada quando a URL não traz `grid`. Foco só existe em 3x3 e 4x4.
-export const DEFAULT_VIEW = { grid: 2, focus: false };
-const GRID_SIZES = [1, 2, 3, 4];
-
-function parseDefaultView(input) {
-  const grid = Number(input?.grid);
-  const focus = input?.focus === true;
-  if (!GRID_SIZES.includes(grid)) throw new ValidationError('Grid padrão inválida (use 1, 2, 3 ou 4)');
-  if (focus && grid < 3) throw new ValidationError('Câmera em foco só existe nas grids 3×3 e 4×4');
-  return { grid, focus };
-}
-
 function emptyConfig() {
   return {
     refreshDelayMs: DEFAULT_DELAY_MS,
-    defaultView: { ...DEFAULT_VIEW },
     streamMode: 'snapshot',
     realtime: { ...DEFAULT_REALTIME },
     auth: { username: '', password: '' },
+    access: { passwordHash: null }, // null = senha padrão
     cameras: [],
   };
 }
@@ -92,17 +81,15 @@ function normalize(raw) {
   const delay = Number(raw.refreshDelayMs);
   const fps = Number(raw.realtime?.fps);
   const maxWidth = Number(raw.realtime?.maxWidth);
-  let defaultView = base.defaultView;
-  try { defaultView = parseDefaultView(raw.defaultView); } catch { /* ausente ou inválida: usa o padrão */ }
   return {
     refreshDelayMs: Number.isInteger(delay) && delay >= MIN_DELAY_MS ? delay : base.refreshDelayMs,
-    defaultView,
     streamMode: STREAM_MODES.includes(raw.streamMode) ? raw.streamMode : base.streamMode,
     realtime: {
       fps: inRange(fps, FPS_RANGE) ? fps : base.realtime.fps,
       maxWidth: inRange(maxWidth, WIDTH_RANGE) ? maxWidth : base.realtime.maxWidth,
     },
     auth: { username: str(raw.auth?.username), password: String(raw.auth?.password ?? '') },
+    access: { passwordHash: isPasswordHash(raw.access?.passwordHash) ? raw.access.passwordHash : null },
     cameras: (Array.isArray(raw.cameras) ? raw.cameras : [])
       .filter((c) => c && typeof c.id === 'string' && HOST_RE.test(str(c.ip)))
       .map((c) => ({
@@ -165,7 +152,6 @@ export function createConfigStore(file) {
     getPublic() {
       return {
         refreshDelayMs: data.refreshDelayMs,
-        defaultView: { ...data.defaultView },
         streamMode: data.streamMode,
         realtime: { ...data.realtime },
         auth: { username: data.auth.username, hasPassword: data.auth.password !== '' },
@@ -176,9 +162,46 @@ export function createConfigStore(file) {
       };
     },
 
+    /**
+     * Visão de quem só assiste (sem login): o suficiente para desenhar a grid e escolher
+     * o modo de atualização. Não revela IP, usuário nem porta das câmeras.
+     */
+    getViewer() {
+      return {
+        refreshDelayMs: data.refreshDelayMs,
+        streamMode: data.streamMode,
+        realtime: { ...data.realtime },
+        cameras: data.cameras.map(({ id, name, refreshDelayMs, streamMode }) => ({ id, name, refreshDelayMs, streamMode })),
+      };
+    },
+
     getCamera: (id) => find(id),
 
     getRealtime: () => ({ ...data.realtime }),
+
+    // ---- Senha de acesso às configurações (sem hash salvo = senha padrão) ----
+
+    async checkPassword(password) {
+      const stored = data.access.passwordHash;
+      return stored ? verifyPassword(password, stored) : safeEqual(password, DEFAULT_PASSWORD);
+    },
+
+    isDefaultPassword: async () => !data.access.passwordHash || verifyPassword(DEFAULT_PASSWORD, data.access.passwordHash),
+
+    async setPassword(next) {
+      if (typeof next !== 'string' || next.length < MIN_PASSWORD_LENGTH) {
+        throw new ValidationError(`A nova senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres`);
+      }
+      if (safeEqual(next, DEFAULT_PASSWORD)) throw new ValidationError('Escolha uma senha diferente da senha padrão');
+      data.access.passwordHash = await hashPassword(next);
+      save();
+    },
+
+    /** Volta para a senha padrão (esquecimento de senha: usado pela CLI). */
+    resetPassword() {
+      data.access.passwordHash = null;
+      save();
+    },
 
     /** Credenciais da câmera, se ela tiver usuário próprio, senão as globais. */
     credentialsFor(cam) {
@@ -197,14 +220,12 @@ export function createConfigStore(file) {
         streamMode = input.streamMode;
       }
       const realtime = input.realtime !== undefined ? parseRealtime(input.realtime) : data.realtime;
-      const defaultView = input.defaultView !== undefined ? parseDefaultView(input.defaultView) : data.defaultView;
 
       const username = str(input.auth?.username);
       const password = input.auth?.password;
       data.refreshDelayMs = delay;
       data.streamMode = streamMode;
       data.realtime = realtime;
-      data.defaultView = defaultView;
       data.auth.username = username;
       data.auth.password = !username ? '' : typeof password === 'string' && password !== '' ? password : data.auth.password;
       save();

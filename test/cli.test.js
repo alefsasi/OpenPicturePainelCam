@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { systemdUnit, windowsCommand } from '../src/autostart.js';
+import { createConfigStore } from '../src/config-store.js';
 import { baseUrl, parseEnvFile } from '../src/runtime.js';
 import { createServer } from '../src/server.js';
 
@@ -100,6 +101,27 @@ test('CLI: start em segundo plano, status, start repetido, stop e limpeza do PID
     assert.match(cli('stop'), /não está rodando/);
   } finally {
     try { cli('stop', '--force'); } catch { /* já parado */ }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('CLI reset-password (painel parado): volta a senha das configurações para "admin"', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cams-reset-'));
+  const configPath = join(dir, 'config.json');
+  try {
+    const store = createConfigStore(configPath);
+    await store.setPassword('outra-senha-9');
+    assert.equal(await store.checkPassword('admin'), false);
+
+    const out = execFileSync(process.execPath, [CLI, 'reset-password'], {
+      env: { ...process.env, CONFIG_PATH: configPath, PORT: String(await freePort()) }, encoding: 'utf8',
+    });
+    assert.match(out, /redefinida para a padrão/);
+
+    const reloaded = createConfigStore(configPath);
+    assert.equal(await reloaded.checkPassword('admin'), true);
+    assert.equal(await reloaded.checkPassword('outra-senha-9'), false);
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });

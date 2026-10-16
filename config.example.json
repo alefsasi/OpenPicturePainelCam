@@ -1,6 +1,5 @@
 {
   "refreshDelayMs": 1000,
-  "defaultView": { "grid": 3, "focus": false },
   "streamMode": "snapshot",
   "realtime": { "fps": 10, "maxWidth": 640 },
   "auth": { "username": "admin", "password": "change-me" },

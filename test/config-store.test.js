@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createConfigStore } from '../src/config-store.js';
 
 function tmpStore() {
@@ -95,22 +95,20 @@ test('modo de atualização: snapshot por padrão, câmera sobrescreve o global'
   } finally { cleanup(); }
 });
 
-test('visualização padrão: 2x2 por padrão, persiste e valida', () => {
+test('a grid preferida vive no navegador: config antiga com defaultView é ignorada e descartada ao salvar', () => {
   const { file, store, cleanup } = tmpStore();
   try {
-    assert.deepEqual(store.getPublic().defaultView, { grid: 2, focus: false });
+    assert.equal('defaultView' in store.getPublic(), false);
 
-    store.updateSettings({ refreshDelayMs: 1000, auth: {}, defaultView: { grid: 4, focus: true } });
-    assert.deepEqual(store.getPublic().defaultView, { grid: 4, focus: true });
-    assert.deepEqual(createConfigStore(file).getPublic().defaultView, { grid: 4, focus: true }); // sobrevive ao reinício
+    // arquivo de uma versão anterior, que guardava a grid no servidor
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ refreshDelayMs: 1500, defaultView: { grid: 4, focus: true }, cameras: [] }));
+    const legacy = createConfigStore(file);
+    assert.equal(legacy.getPublic().refreshDelayMs, 1500); // o resto da config continua valendo
+    assert.equal('defaultView' in legacy.getPublic(), false);
 
-    // sem o campo, mantém o atual
-    store.updateSettings({ refreshDelayMs: 2000, auth: {} });
-    assert.deepEqual(store.getPublic().defaultView, { grid: 4, focus: true });
-
-    assert.throws(() => store.updateSettings({ refreshDelayMs: 1000, auth: {}, defaultView: { grid: 5, focus: false } }), /Grid padrão/);
-    assert.throws(() => store.updateSettings({ refreshDelayMs: 1000, auth: {}, defaultView: { grid: 2, focus: true } }), /foco/);
-    assert.deepEqual(store.getPublic().defaultView, { grid: 4, focus: true }); // inválido não altera nada
+    legacy.updateSettings({ refreshDelayMs: 2000, auth: {}, defaultView: { grid: 3, focus: false } });
+    assert.equal('defaultView' in JSON.parse(readFileSync(file, 'utf8')), false);
   } finally { cleanup(); }
 });
 

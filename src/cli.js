@@ -5,7 +5,8 @@ import { closeSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import * as autostart from './autostart.js';
-import { appRoot, baseUrl, isAlive, ping, readPidInfo, requestShutdown, rotateLog, settings } from './runtime.js';
+import { createConfigStore } from './config-store.js';
+import { appRoot, baseUrl, isAlive, ping, postLocal, readPidInfo, requestShutdown, rotateLog, settings } from './runtime.js';
 
 const HELP = `Painel de Câmeras
 
@@ -19,6 +20,7 @@ Uso: painel.bat [comando]   (Windows)      ./start.sh [comando]   (Linux)
   autostart on     liga o início automático (off desliga, status mostra)
   menu             menu interativo
   logs             mostra o final do arquivo de log
+  reset-password   volta a senha das configurações para a padrão ("admin")
 
 Porta e endereço: defina PORT/HOST ou escreva-os em data/painel.env.`;
 
@@ -148,6 +150,23 @@ async function open() {
   return 0;
 }
 
+/** Esqueceu a senha das configurações: funciona com o painel rodando ou parado. */
+async function resetPassword() {
+  const current = await running();
+  try {
+    if (current && !current.unresponsive) {
+      if (!(await postLocal(current.info, '/api/reset-password'))) throw new Error('o painel recusou o pedido');
+    } else {
+      createConfigStore(settings().configPath).resetPassword();
+    }
+  } catch (err) {
+    console.error(`Não consegui redefinir a senha: ${err.message}`);
+    return 1;
+  }
+  console.log('Senha das configurações redefinida para a padrão ("admin"). Entre e troque-a em Configurações.');
+  return 0;
+}
+
 async function toggleAutostart(action) {
   if (!autostart.supported()) {
     console.error('Início automático não é suportado neste sistema operacional.');
@@ -204,6 +223,7 @@ const commands = {
   open,
   menu,
   logs: async () => { console.log(tailLog(40)); return 0; },
+  'reset-password': resetPassword,
   autostart: () => toggleAutostart(args[0]),
   help: async () => { console.log(HELP); return 0; },
 };

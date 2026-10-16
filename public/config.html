@@ -9,108 +9,136 @@
 <body class="settings">
   <header>
     <h1>Configurações</h1>
-    <a class="btn" href="/">← Voltar às câmeras</a>
+    <div class="row tight">
+      <button class="btn" type="button" id="logout" hidden>Sair</button>
+      <a class="btn" href="/">← Voltar às câmeras</a>
+    </div>
   </header>
   <p id="status" role="status"></p>
 
-  <form id="general" class="card" autocomplete="off">
-    <h2>Geral</h2>
-    <div class="fields">
-      <label>Delay entre atualizações (ms)
-        <input name="refreshDelayMs" type="number" min="100" max="600000" step="100" required>
-      </label>
-      <label>Usuário global
-        <input name="username" autocomplete="off">
-      </label>
-      <label>Senha global
-        <input name="password" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore="true">
-      </label>
-    </div>
-    <p class="note">O usuário e a senha globais valem para todas as câmeras que não tiverem credenciais próprias. Deixe a senha em branco para mantê-la; apagar o usuário remove as duas.</p>
-
-    <h2 class="sub">Visualização padrão</h2>
-    <div class="fields">
-      <label>Grid ao abrir o painel
-        <select name="defaultView">
-          <option value="1">1 câmera</option>
-          <option value="2">2×2 (4 câmeras)</option>
-          <option value="3">3×3 (9 câmeras)</option>
-          <option value="4">4×4 (16 câmeras)</option>
-          <option value="3f">3×3 com câmera em foco</option>
-          <option value="4f">4×4 com câmera em foco</option>
-        </select>
-      </label>
-    </div>
-    <p class="note">Usada quando o endereço não traz <code>?grid=</code>. Com foco, a primeira câmera da lista (ordem do menu ☰) fica em destaque. Links com <code>?grid=</code> continuam funcionando normalmente.</p>
-
-    <h2 class="sub">Modo de atualização</h2>
-    <div class="fields">
-      <label>Modo padrão
-        <select name="streamMode">
-          <option value="snapshot">Snapshot (imagens, mais leve)</option>
-          <option value="realtime">Tempo real (vídeo, requer FFmpeg)</option>
-        </select>
-      </label>
-      <label>FPS do tempo real
-        <input name="fps" type="number" min="1" max="30" required>
-      </label>
-      <label>Largura máx. do tempo real (px)
-        <input name="maxWidth" type="number" min="160" max="1920" step="10" required>
-      </label>
-    </div>
-    <p class="note">O tempo real usa o sub-stream (RTSP) da câmera e converte com FFmpeg no servidor; o delay acima só vale para snapshots. Cada câmera pode escolher o próprio modo, que sobrescreve este padrão.</p>
-    <p id="realtime-note" class="note warn" hidden>FFmpeg não encontrado no servidor: as câmeras em tempo real estão exibindo snapshots. Instale o FFmpeg (ou defina FFMPEG_PATH) e reinicie o servidor.</p>
+  <!-- Sem login só aparece isto; o restante nem é carregado do servidor. -->
+  <form id="login" class="card narrow" hidden>
+    <h2>Entrar</h2>
+    <label>Senha das configurações
+      <input name="password" type="password" autocomplete="current-password" required autofocus>
+    </label>
     <div class="row">
-      <button class="btn primary" type="submit">Salvar</button>
-      <label class="inline"><input type="checkbox" data-reveal> Mostrar senha</label>
+      <button class="btn primary" type="submit">Entrar</button>
     </div>
+    <p class="note">Ver as câmeras não exige senha; só esta tela e as alterações.</p>
   </form>
 
-  <section class="card">
-    <h2>Câmeras</h2>
-    <table class="table">
-      <thead><tr><th>Nome</th><th>IP</th><th>Credenciais</th><th>Modo</th><th>Delay</th><th></th></tr></thead>
-      <tbody id="cameras"></tbody>
-    </table>
-    <p id="no-cameras" class="note" hidden>Nenhuma câmera cadastrada ainda.</p>
-  </section>
+  <div id="content" hidden>
+    <p id="default-password-warning" class="banner warn" hidden>
+      Você está usando a <strong>senha padrão</strong>. Qualquer pessoa que alcance este painel na rede pode entrar. Troque-a em <a href="#password-form">Senha de acesso</a>.
+    </p>
 
-  <form id="camera-form" class="card" autocomplete="off">
-    <h2 id="camera-form-title">Nova câmera</h2>
-    <div class="fields">
-      <label>Nome
-        <input name="name" placeholder="Entrada" required>
-      </label>
-      <label>IP (ou IP:porta)
-        <input name="ip" placeholder="192.168.0.10" required>
-      </label>
-      <label>Usuário (opcional)
-        <input name="username" autocomplete="off">
-      </label>
-      <label>Senha (opcional)
-        <input name="password" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore="true">
-      </label>
-      <label>Delay próprio (ms, opcional)
-        <input name="refreshDelayMs" type="number" min="100" max="600000" step="100" placeholder="usa o global">
-      </label>
-      <label>Modo de atualização
-        <select name="streamMode">
-          <option value="">Usar o padrão global</option>
-          <option value="snapshot">Snapshot</option>
-          <option value="realtime">Tempo real</option>
-        </select>
-      </label>
-      <label>Porta RTSP (opcional)
-        <input name="rtspPort" type="number" min="1" max="65535" placeholder="554">
-      </label>
-    </div>
-    <p class="note">Sem usuário próprio a câmera usa as credenciais globais; sem delay próprio, usa o delay global (o delay só vale para snapshots). Ao editar, deixe a senha em branco para mantê-la.</p>
-    <div class="row">
-      <button class="btn primary" type="submit" id="camera-submit">Cadastrar</button>
-      <button class="btn" type="button" id="camera-cancel" hidden>Cancelar edição</button>
-      <label class="inline"><input type="checkbox" data-reveal> Mostrar senha</label>
-    </div>
-  </form>
+    <form id="general" class="card" autocomplete="off">
+      <h2>Geral</h2>
+      <div class="fields">
+        <label>Delay entre atualizações (ms)
+          <input name="refreshDelayMs" type="number" min="100" max="600000" step="100" required>
+        </label>
+        <label>Usuário global
+          <input name="username" autocomplete="off">
+        </label>
+        <label>Senha global
+          <input name="password" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore="true">
+        </label>
+      </div>
+      <p class="note">O usuário e a senha globais valem para todas as câmeras que não tiverem credenciais próprias. Deixe a senha em branco para mantê-la; apagar o usuário remove as duas.</p>
+
+      <h2 class="sub">Modo de atualização</h2>
+      <div class="fields">
+        <label>Modo padrão
+          <select name="streamMode">
+            <option value="snapshot">Snapshot (imagens, mais leve)</option>
+            <option value="realtime">Tempo real (vídeo, requer FFmpeg)</option>
+          </select>
+        </label>
+        <label>FPS do tempo real
+          <input name="fps" type="number" min="1" max="30" required>
+        </label>
+        <label>Largura máx. do tempo real (px)
+          <input name="maxWidth" type="number" min="160" max="1920" step="10" required>
+        </label>
+      </div>
+      <p class="note">O tempo real usa o sub-stream (RTSP) da câmera e converte com FFmpeg no servidor; o delay acima só vale para snapshots. Cada câmera pode escolher o próprio modo, que sobrescreve este padrão.</p>
+      <p id="realtime-note" class="note warn" hidden>FFmpeg não encontrado no servidor: as câmeras em tempo real estão exibindo snapshots. Instale o FFmpeg (ou defina FFMPEG_PATH) e reinicie o servidor.</p>
+      <div class="row">
+        <button class="btn primary" type="submit">Salvar</button>
+        <label class="inline"><input type="checkbox" data-reveal> Mostrar senha</label>
+      </div>
+    </form>
+
+    <section class="card">
+      <h2>Câmeras</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Nome</th><th>IP</th><th>Credenciais</th><th>Modo</th><th>Delay</th><th></th></tr></thead>
+          <tbody id="cameras"></tbody>
+        </table>
+      </div>
+      <p id="no-cameras" class="note" hidden>Nenhuma câmera cadastrada ainda.</p>
+    </section>
+
+    <form id="camera-form" class="card" autocomplete="off">
+      <h2 id="camera-form-title">Nova câmera</h2>
+      <div class="fields">
+        <label>Nome
+          <input name="name" placeholder="Entrada" required>
+        </label>
+        <label>IP (ou IP:porta)
+          <input name="ip" placeholder="192.168.0.10" required>
+        </label>
+        <label>Usuário (opcional)
+          <input name="username" autocomplete="off">
+        </label>
+        <label>Senha (opcional)
+          <input name="password" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore="true">
+        </label>
+        <label>Delay próprio (ms, opcional)
+          <input name="refreshDelayMs" type="number" min="100" max="600000" step="100" placeholder="usa o global">
+        </label>
+        <label>Modo de atualização
+          <select name="streamMode">
+            <option value="">Usar o padrão global</option>
+            <option value="snapshot">Snapshot</option>
+            <option value="realtime">Tempo real</option>
+          </select>
+        </label>
+        <label>Porta RTSP (opcional)
+          <input name="rtspPort" type="number" min="1" max="65535" placeholder="554">
+        </label>
+      </div>
+      <p class="note">Sem usuário próprio a câmera usa as credenciais globais; sem delay próprio, usa o delay global (o delay só vale para snapshots). Ao editar, deixe a senha em branco para mantê-la.</p>
+      <div class="row">
+        <button class="btn primary" type="submit" id="camera-submit">Cadastrar</button>
+        <button class="btn" type="button" id="camera-cancel" hidden>Cancelar edição</button>
+        <label class="inline"><input type="checkbox" data-reveal> Mostrar senha</label>
+      </div>
+    </form>
+
+    <form id="password-form" class="card" autocomplete="off">
+      <h2>Senha de acesso</h2>
+      <div class="fields">
+        <label>Senha atual
+          <input name="current" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore="true" required>
+        </label>
+        <label>Nova senha (mínimo 6 caracteres)
+          <input name="next" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore="true" required minlength="6">
+        </label>
+        <label>Repita a nova senha
+          <input name="repeat" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore="true" required minlength="6">
+        </label>
+      </div>
+      <p class="note">Esta senha protege esta tela e qualquer alteração (cadastrar, editar, excluir, reordenar câmeras). Quem só assiste não precisa dela. Ao trocá-la, os outros dispositivos precisam entrar de novo. Se esquecer, rode <code>painel.bat reset-password</code> (ou <code>./start.sh reset-password</code>) no computador onde o painel está instalado.</p>
+      <div class="row">
+        <button class="btn primary" type="submit">Trocar senha</button>
+        <label class="inline"><input type="checkbox" data-reveal> Mostrar senha</label>
+      </div>
+    </form>
+  </div>
 
   <script type="module" src="/config.js"></script>
 </body>

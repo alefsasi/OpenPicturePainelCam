@@ -21,7 +21,7 @@ const cache = join(dist, '.cache');
 const APP = 'open-picture-painel-cam';
 
 // O que vai no pacote (testes e dados locais ficam de fora).
-const INCLUDE = ['src', 'public', 'package.json', 'config.example.json', 'README.md', 'LICENSE', 'start.bat', 'painel.bat', 'start.sh'];
+const INCLUDE = ['src', 'public', 'package.json', 'config.example.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'start.bat', 'painel.bat', 'start.sh'];
 
 const TARGETS = {
   'win-x64': { id: 'win-x64', ext: 'zip', nodeExt: 'zip', binary: 'node.exe', bundled: true },

@@ -6,15 +6,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from '../src/server.js';
 import { createFakeSpawn, fakeJpeg, waitFor } from '../test-support/fake-ffmpeg.js';
+import { login } from '../test-support/login.js';
 
 // O cliente WebSocket global só existe a partir do Node 22.
 const skip = typeof WebSocket === 'undefined' ? 'WebSocket global indisponível neste Node' : false;
 
-let panel; let dir; let base; let port; let fake; let cameraId;
+let panel; let dir; let base; let port; let fake; let cameraId; let cookie;
 
 const api = (path, method = 'GET', body) => fetch(base + path, {
   method,
-  headers: body ? { 'Content-Type': 'application/json' } : undefined,
+  headers: { ...(body && { 'Content-Type': 'application/json' }), ...(cookie && { Cookie: cookie }) },
   body: body && JSON.stringify(body),
 });
 
@@ -46,6 +47,7 @@ before(async () => {
   await new Promise((resolve) => panel.listen(0, '127.0.0.1', resolve));
   port = panel.address().port;
   base = `http://127.0.0.1:${port}`;
+  cookie = await login(base);
 
   await api('/api/settings', 'PUT', {
     refreshDelayMs: 1000, auth: { username: 'u', password: 'p@ss' }, realtime: { fps: 12, maxWidth: 480 },

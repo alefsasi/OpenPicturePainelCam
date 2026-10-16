@@ -1,6 +1,6 @@
 {
   "name": "open-picture-painel-cam",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Painel leve de câmeras IP (Hikvision) no modo Picture, sem dependências.",
   "type": "module",
   "private": true,
